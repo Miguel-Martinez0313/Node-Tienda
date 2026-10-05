@@ -1,106 +1,75 @@
+const pool = require('../config/db');
+const { toInt, toDecimal, toText, toDateTime, formatDateTimeLocal } = require('../utils/validators');
+
 const descuentodashController = {};
 
+// Solo se aceptan estos campos del formulario (nunca req.body completo)
+const validarOferta = (body) => {
+    const datos = {
+        descuento: toDecimal(body.descuento, { min: 0.01, max: 100 }),
+        descripcion: toText(body.descripcion, { min: 0, max: 2000 }),
+        fecha_inicio: toDateTime(body.fecha_inicio),
+        fecha_fin: toDateTime(body.fecha_fin)
+    };
+    if (datos.descuento === null) return { error: 'El descuento debe ser un porcentaje entre 0.01 y 100.' };
+    if (datos.descripcion === null) return { error: 'La descripción es demasiado larga.' };
+    if (!datos.fecha_inicio || !datos.fecha_fin) return { error: 'Las fechas no son válidas.' };
+    if (datos.fecha_fin < datos.fecha_inicio) return { error: 'La fecha de fin debe ser posterior a la de inicio.' };
+    return { datos };
+};
+
 // Mostrar todas las ofertas
-descuentodashController.mostrar = (req, res) => {
-    req.getConnection((err, conn) => {
-        if (err) {
-            console.error('Error al conectar con la base de datos:', err);
-            return res.status(500).json({ message: "Error al conectar con la base de datos", error: err });
-        }
+descuentodashController.mostrar = async (req, res) => {
+    const [resultados] = await pool.query('SELECT * FROM ofertas');
 
-        conn.query('SELECT * FROM ofertas', (error, resultados) => {
-            if (error) {
-                console.error('Error al mostrar las ofertas:', error);
-                return res.status(500).json({ message: "Error al cargar ofertas", error });
-            }
+    const descuentos = resultados.map((oferta) => ({
+        ...oferta,
+        fecha_inicio: formatDateTimeLocal(oferta.fecha_inicio),
+        fecha_fin: formatDateTimeLocal(oferta.fecha_fin)
+    }));
 
-            // Procesar y formatear fechas
-            const descuentos = resultados.map(oferta => ({
-                ...oferta,
-                fecha_inicio: oferta.fecha_inicio
-                    ? new Date(oferta.fecha_inicio).toISOString().slice(0, 16)
-                    : null,
-                fecha_fin: oferta.fecha_fin
-                    ? new Date(oferta.fecha_fin).toISOString().slice(0, 16)
-                    : null
-            }));
-
-            res.render("dashboard/descuentos", { descuentos });
-        });
-    });
+    res.render('dashboard/descuentos', { descuentos });
 };
 
 // Crear una nueva oferta
-descuentodashController.crear = (req, res) => {
-    const nuevaOferta = req.body;
+descuentodashController.crear = async (req, res) => {
+    const { datos, error } = validarOferta(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
 
-    req.getConnection((err, conn) => {
-        if (err) {
-            console.error('Error al conectar con la base de datos:', err);
-            return res.status(500).json({ message: "Error al conectar con la base de datos", error: err });
-        }
-
-        conn.query('INSERT INTO ofertas SET ?', [nuevaOferta], (error, resultados) => {
-            if (error) {
-                console.error('Error al crear una oferta:', error);
-                return res.status(500).json({ message: "Error al crear oferta", error });
-            }
-
-            res.redirect('/ofertas/descuentos');
-        });
-    });
+    const [result] = await pool.query('INSERT INTO ofertas SET ?', [datos]);
+    res.status(201).json({ success: true, message: 'Oferta creada correctamente', id: result.insertId });
 };
 
 // Editar una oferta existente
-descuentodashController.editar = (req, res) => {
-    const { id } = req.params;
-    const ofertaActualizada = req.body;
+descuentodashController.editar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    const { datos, error } = validarOferta(req.body);
+    if (!id || error) return res.status(400).json({ success: false, message: error || 'ID no válido.' });
 
-    req.getConnection((err, conn) => {
-        if (err) {
-            console.error('Error al conectar con la base de datos:', err);
-            return res.status(500).json({ message: "Error al conectar con la base de datos", error: err });
-        }
-
-        conn.query('UPDATE ofertas SET ? WHERE id = ?', [ofertaActualizada, id], (error, resultados) => {
-            if (error) {
-                console.error('Error al editar una oferta:', error);
-                return res.status(500).json({ message: "Error al editar oferta", error });
-            }
-
-            if (resultados.affectedRows === 0) {
-                return res.status(404).json({ message: "No se encontró la oferta para actualizar" });
-            }
-
-            res.json({ success: true, message: "Oferta actualizada correctamente" });
-        });
-    });
+    const [result] = await pool.query('UPDATE ofertas SET ? WHERE id = ?', [datos, id]);
+    if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: 'No se encontró la oferta para actualizar' });
+    }
+    res.json({ success: true, message: 'Oferta actualizada correctamente' });
 };
 
-
 // Eliminar una oferta
-descuentodashController.eliminar = (req, res) => {
-    const { id } = req.params;
+descuentodashController.eliminar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    if (!id) return res.status(400).json({ success: false, message: 'ID no válido.' });
 
-    req.getConnection((err, conn) => {
-        if (err) {
-            console.error('Error al conectar con la base de datos:', err);
-            return res.status(500).json({ success: false, message: "Error al conectar con la base de datos", error: err });
+    try {
+        const [result] = await pool.query('DELETE FROM ofertas WHERE id = ?', [id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'No se encontró la oferta para eliminar' });
         }
-
-        conn.query('DELETE FROM ofertas WHERE id = ?', [id], (error, resultados) => {
-            if (error) {
-                console.error('Error al eliminar una oferta:', error);
-                return res.status(500).json({ success: false, message: "Error al eliminar oferta", error });
-            }
-
-            if (resultados.affectedRows > 0) {
-                res.json({ success: true, message: "Oferta eliminada correctamente" });
-            } else {
-                res.status(404).json({ success: false, message: "No se encontró la oferta para eliminar" });
-            }
-        });
-    });
+        res.json({ success: true, message: 'Oferta eliminada correctamente' });
+    } catch (err) {
+        if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+            return res.status(409).json({ success: false, message: 'No se puede eliminar: hay productos con esta oferta.' });
+        }
+        throw err;
+    }
 };
 
 module.exports = descuentodashController;

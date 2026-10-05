@@ -133,6 +133,12 @@ body, html {
     color: var(--background-color);
 }
 
+.cart-message {
+    width: 100%;
+    margin: 0 0 10px;
+    font-weight: bold;
+}
+
 .cart-info {
     display: flex;
     align-items: center;

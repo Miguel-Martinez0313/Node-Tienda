@@ -1,143 +1,126 @@
+const pool = require('../config/db');
+const { toInt } = require('../utils/validators');
+
 const productosController = {};
 
-// Agregar productos al carrito
-productosController.agregarAlCarrito = (req, res) => {
-    const { producto_id, cantidad } = req.body;
-    req.getConnection((err, conn) => {
-        if (err) return res.status(500).send('Error en la conexión a la base de datos: ' + err);
+const MAX_POR_PRODUCTO = 100;
 
-        conn.query('SELECT nombre, imagen FROM productos WHERE id = ?', [producto_id], (error, results) => {
-            if (error || results.length === 0) {
-                return res.status(404).send('Producto no encontrado');
-            }
-            const { nombre: nombreProducto, imagen } = results[0];
-
-            if (!req.session.carrito) {
-                req.session.carrito = [];
-            }
-
-            const existingItemIndex = req.session.carrito.findIndex(item => item.producto_id === producto_id);
-            if (existingItemIndex !== -1) {
-                req.session.carrito[existingItemIndex].cantidad += parseInt(cantidad, 10);
-            } else {
-                req.session.carrito.push({
-                    producto_id,
-                    nombre: nombreProducto,
-                    imagen,
-                    cantidad: parseInt(cantidad, 10)
-                });
-            }
-
-            res.redirect('/productos/comprar');
-        });
-    });
+const volverConMensaje = (req, res, message) => {
+    req.session.mensajeCarrito = message;
+    res.redirect('/productos/comprar');
 };
 
+// Agregar productos al carrito
+productosController.agregarAlCarrito = async (req, res) => {
+    const productoId = toInt(req.body.producto_id, { min: 1 });
+    const cantidad = toInt(req.body.cantidad, { min: 1, max: MAX_POR_PRODUCTO });
+
+    if (!productoId || !cantidad) {
+        return volverConMensaje(req, res, `La cantidad debe ser un número entre 1 y ${MAX_POR_PRODUCTO}.`);
+    }
+
+    const [productos] = await pool.query(
+        'SELECT id, nombre, imagen, cantidad_en_almacen FROM productos WHERE id = ?',
+        [productoId]
+    );
+    const producto = productos[0];
+    if (!producto) {
+        return res.status(404).send('Producto no encontrado');
+    }
+
+    if (!Array.isArray(req.session.carrito)) {
+        req.session.carrito = [];
+    }
+
+    const existente = req.session.carrito.find((item) => item.producto_id === productoId);
+    const total = (existente ? existente.cantidad : 0) + cantidad;
+
+    if (total > producto.cantidad_en_almacen) {
+        return volverConMensaje(req, res, `Solo hay ${producto.cantidad_en_almacen} unidades de ${producto.nombre} disponibles.`);
+    }
+
+    if (existente) {
+        existente.cantidad = total;
+    } else {
+        req.session.carrito.push({
+            producto_id: productoId,
+            nombre: producto.nombre,
+            imagen: producto.imagen,
+            cantidad
+        });
+    }
+
+    res.redirect('/productos/comprar');
+};
 
 // Mostrar productos disponibles y contenido del carrito en la misma vista
-productosController.mostrarProductos = (req, res) => {
-    const categoriaId = req.query.categoria; // Lee el ID de la categoría de los parámetros de consulta
-    req.getConnection((err, conn) => {
-        if (err) {
-            return res.status(500).send('Error en la conexión a la base de datos: ' + err);
-        }
+productosController.mostrarProductos = async (req, res) => {
+    const categoriaId = toInt(req.query.categoria, { min: 1 });
 
-        // Consulta SQL para obtener todas las categorías
-        conn.query('SELECT * FROM categorias', (error, categorias) => {
-            if (error) {
-                return res.status(500).send('Error al recuperar las categorías');
-            }
+    const [categorias] = await pool.query('SELECT id, nombre FROM categorias ORDER BY nombre');
 
-            // Consulta SQL para obtener productos, filtrando por categoria_id si está especificada
-            let query = 'SELECT * FROM productos WHERE cantidad_en_almacen > 0';
-            const params = [];
+    let query = 'SELECT id, nombre, precio, imagen FROM productos WHERE cantidad_en_almacen > 0';
+    const params = [];
+    if (categoriaId) {
+        query += ' AND categoria_id = ?';
+        params.push(categoriaId);
+    }
+    const [productos] = await pool.query(query, params);
 
-            if (categoriaId) {
-                query += ' AND categoria_id = ?';
-                params.push(categoriaId);
-            }
+    const mensaje = req.session.mensajeCarrito || '';
+    delete req.session.mensajeCarrito;
 
-            conn.query(query, params, (error, productos) => {
-                if (error) {
-                    res.status(500).send('Error al recuperar los productos');
-                } else {
-                    // Renderizar la vista con productos filtrados, carrito, y categorías
-                    res.render('vender/comprar', { 
-                        productos: productos, 
-                        carrito: req.session.carrito || [], 
-                        categorias: categorias, 
-                        categoriaSeleccionada: categoriaId 
-                    });
-                }
-            });
-        });
+    res.render('vender/comprar', {
+        productos,
+        carrito: req.session.carrito || [],
+        categorias,
+        categoriaSeleccionada: categoriaId,
+        mensaje
     });
 };
-
 
 // Finalizar la compra
-productosController.finalizarCompra = (req, res) => {
-    if (!req.session.carrito || !Array.isArray(req.session.carrito) || req.session.carrito.length === 0) {
-        return res.send("No hay productos en el carrito.");
-    }
-    if (!req.session.usuarioId) {
-        return res.status(403).send("Usuario no identificado.");
+productosController.finalizarCompra = async (req, res) => {
+    const carrito = req.session.carrito;
+    if (!Array.isArray(carrito) || carrito.length === 0) {
+        return volverConMensaje(req, res, 'No hay productos en el carrito.');
     }
 
-    const usuarioId = req.session.usuarioId;
+    const usuarioId = req.session.user.id;
 
-    req.getConnection((err, conn) => {
-        if (err) {
-            return res.status(500).send('Error en la conexión a la base de datos: ' + err);
-        }
+    try {
+        // Las consultas van una tras otra dentro de la transacción: así, si un producto
+        // no tiene stock suficiente, se deshace todo lo anterior
+        await pool.withTransaction(async (conn) => {
+            for (const item of carrito) {
+                const [productos] = await conn.query(
+                    'SELECT nombre, precio, cantidad_en_almacen FROM productos WHERE id = ? FOR UPDATE',
+                    [item.producto_id]
+                );
+                const producto = productos[0];
+                if (!producto || producto.cantidad_en_almacen < item.cantidad) {
+                    const error = new Error(`No hay stock suficiente de ${producto ? producto.nombre : item.nombre}.`);
+                    error.stock = true;
+                    throw error;
+                }
 
-        conn.beginTransaction(err => {
-            if (err) {
-                return res.status(500).send('Error al iniciar la transacción');
+                await conn.query(
+                    'UPDATE productos SET cantidad_en_almacen = cantidad_en_almacen - ?, cantidad_vendida = cantidad_vendida + ? WHERE id = ?',
+                    [item.cantidad, item.cantidad, item.producto_id]
+                );
+                await conn.query(
+                    'INSERT INTO compras (producto_id, cantidad, usuario_id, precio_unitario) VALUES (?, ?, ?, ?)',
+                    [item.producto_id, item.cantidad, usuarioId, producto.precio]
+                );
             }
-
-            const carrito = req.session.carrito; // Ya es un arreglo
-
-            const promises = carrito.map(item => {
-                return new Promise((resolve, reject) => {
-                    conn.query('UPDATE productos SET cantidad_en_almacen = cantidad_en_almacen - ?, cantidad_vendida = cantidad_vendida + ? WHERE id = ?',
-                        [item.cantidad, item.cantidad, item.producto_id], (error) => {
-                            if (error) {
-                                return reject('Error al actualizar el inventario');
-                            }
-
-                            conn.query('INSERT INTO compras (producto_id, cantidad, usuario_id) VALUES (?, ?, ?)',
-                                [item.producto_id, item.cantidad, usuarioId], (err) => {
-                                    if (err) {
-                                        return reject('Error al registrar la compra');
-                                    }
-                                    resolve();
-                                });
-                        });
-                });
-            });
-
-            Promise.all(promises)
-                .then(() => {
-                    conn.commit(err => {
-                        if (err) {
-                            conn.rollback(() => {
-                                res.status(500).send('Error al finalizar la transacción');
-                            });
-                        } else {
-                            req.session.carrito = []; // Limpiar el carrito después de la compra
-                            res.redirect('/productos/comprar');
-                        }
-                    });
-                })
-                .catch(error => {
-                    conn.rollback(() => {
-                        res.status(500).send(error);
-                    });
-                });
         });
-    });
-};
+    } catch (err) {
+        if (err.stock) return volverConMensaje(req, res, err.message);
+        throw err;
+    }
 
+    req.session.carrito = [];
+    volverConMensaje(req, res, '¡Compra realizada con éxito!');
+};
 
 module.exports = productosController;

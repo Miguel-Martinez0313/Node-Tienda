@@ -3,7 +3,7 @@ $(document).ready(function () {
 
   // Mostrar/ocultar el formulario de agregar descuento
   $('#toggleFormBtn').click(function () {
-    $('#newDiscountForm').toggle('slow'); // Asegúrate de que el ID coincide con el contenedor del formulario
+    $('#addDiscountForm').toggle('slow');
   });
 
   // Enviar el formulario para agregar un nuevo descuento
@@ -21,7 +21,7 @@ $(document).ready(function () {
         });
       },
       error: function (err) {
-        Swal.fire('Error!', 'No se pudo agregar el descuento.', 'error');
+        Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo agregar el descuento.', 'error');
       }
     });
   });
@@ -65,7 +65,7 @@ $(document).ready(function () {
           });
         },
         error: function (err) {
-          Swal.fire('Error!', 'No se pudo actualizar el descuento.', 'error');
+          Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo actualizar el descuento.', 'error');
         }
       });
     });
@@ -95,7 +95,7 @@ $(document).ready(function () {
             });
           },
           error: function (err) {
-            Swal.fire('Error!', 'No se pudo eliminar el descuento.', 'error');
+            Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo eliminar el descuento.', 'error');
           }
         });
       }

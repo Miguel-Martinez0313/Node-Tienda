@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const categoriasController = require('../controllers/categoriasdash.controller');  // Verifica la ruta y el nombre del archivo
+const categoriasController = require('../controllers/categoriasdash.controller');
+const asyncHandler = require('../utils/asyncHandler');
 
-router.get('/categoria', categoriasController.mostrar);
-router.post('/categoria/add', categoriasController.crear);
-router.post('/categoria/edit/:id', categoriasController.editar);
-router.delete('/categoria/delete/:id', categoriasController.eliminar);
+router.get('/categoria', asyncHandler(categoriasController.mostrar));
+router.post('/categoria/add', asyncHandler(categoriasController.crear));
+router.post('/categoria/edit/:id', asyncHandler(categoriasController.editar));
+router.delete('/categoria/delete/:id', asyncHandler(categoriasController.eliminar));
 
 module.exports = router;

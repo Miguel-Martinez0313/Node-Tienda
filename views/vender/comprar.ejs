@@ -29,7 +29,7 @@
                         <form action="/productos/agregar-al-carrito" method="POST" class="add-to-cart-form">
                             <input type="hidden" name="producto_id" value="<%= producto.id %>">
                             <div class="quantity-container">
-                                <input type="number" name="cantidad" min="1" value="1" class="quantity-input">
+                                <input type="number" name="cantidad" min="1" max="100" value="1" class="quantity-input">
                                 <button type="submit" class="add-to-cart-button">Agregar</button>
                             </div>
                         </form>
@@ -38,13 +38,16 @@
             </div>
 
             <div class="bottom-section">
+                <% if (mensaje) { %>
+                    <p class="cart-message"><%= mensaje %></p>
+                <% } %>
                 <div class="cart-info">
-                    <span><%= Object.keys(carrito).length %> items</span>
+                    <span><%= carrito.length %> items</span>
                 </div>
 
-                <% if (Object.keys(carrito).length > 0) { %>
+                <% if (carrito.length > 0) { %>
                     <div class="cart-items">
-                        <% Object.values(carrito).forEach(item => { %>
+                        <% carrito.forEach(item => { %>
                             <div class="cart-item">
                                 <div class="cart-item-circle">
                                     <% if (item.imagen) { %>

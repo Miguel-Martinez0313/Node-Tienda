@@ -19,7 +19,7 @@
                 <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" fill="#FFFFFF" />
                 <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 16.6863 20 20V21C20 21.5523 19.5523 22 19 22H5C4.44772 22 4 21.5523 4 21V20Z" fill="#FFFFFF" />
             </svg>
-            <h3 class="user-name">Nombre Del Usuario ❤</h3>
+            <h3 class="user-name"><%= currentUser ? currentUser.nombre : 'Invitado' %></h3>
         </a>
     </nav>
 
@@ -30,6 +30,11 @@
             <li><a href="/lista/categoria" class="nav-item"><i class="fas fa-list"></i><span>Categorías</span></a></li>
             <li><a href="/compras" class="nav-item"><i class="fas fa-shopping-cart"></i><span>Compras</span></a></li>
             <li><a href="/ofertas/descuentos" class="nav-item"><i class="fas fa-tags"></i><span>Descuentos</span></a></li>
+            <li>
+                <form action="/inicio/logout" method="POST" class="logout-form">
+                    <button type="submit" class="nav-item logout-button"><i class="fas fa-sign-out-alt"></i><span>Cerrar sesión</span></button>
+                </form>
+            </li>
 
         </ul>
         <p class="footer-text">2024 **𝚂𝚢𝙺**. Todos los derechos reservados.</p>

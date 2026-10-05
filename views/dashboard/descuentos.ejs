@@ -25,7 +25,7 @@
           <div class="form-row">
             <div class="form-group col-md-6">
               <label>Descuento (%)</label>
-              <input type="number" name="descuento" class="form-control" placeholder="Porcentaje de descuento" step="0.01" required>
+              <input type="number" name="descuento" class="form-control" placeholder="Porcentaje de descuento" min="0.01" max="100" step="0.01" required>
             </div>
             <div class="form-group col-md-6">
               <label>Descripción</label>
@@ -87,10 +87,10 @@
         </div>
         <div class="modal-body">
           <form id="editDiscountForm">
-            <input type="hidden" id="editId" name="id">
+            <input type="hidden" id="editId">
             <div class="form-group">
               <label>Descuento (%)</label>
-              <input type="number" id="editDescuento" name="descuento" class="form-control" required>
+              <input type="number" id="editDescuento" name="descuento" class="form-control" min="0.01" max="100" step="0.01" required>
             </div>
             <div class="form-group">
               <label>Descripción</label>

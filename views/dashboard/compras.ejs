@@ -46,10 +46,8 @@
                         </div>
                         <div class="modal-body">
                           <ul>
-                            <% usuario.productos.split(', ').forEach(function(item) { 
-                              var parts = item.split('|');
-                              %>
-                              <li><%= parts[0] %> - <%= parts[1] %></li>
+                            <% usuario.productos.forEach(function(item) { %>
+                              <li><%= item.nombre %> - <%= item.cantidad %></li>
                             <% }); %>
                           </ul>
                         </div>

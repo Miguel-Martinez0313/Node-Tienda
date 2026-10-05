@@ -1,6 +1,6 @@
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('../sw.js') // Ruta a `sw.js` en `public/js`
+      navigator.serviceWorker.register('/sw.js') // Servido desde public/sw.js
         .then(registration => {
           console.log("Service Worker registrado con éxito:", registration);
         })

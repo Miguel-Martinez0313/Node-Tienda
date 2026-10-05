@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const homeController = require('../controllers/homedash.Controller'); // Asegúrate de que la ruta sea correcta
+const homeController = require('../controllers/homedash.Controller');
+const asyncHandler = require('../utils/asyncHandler');
 
-// Define la ruta para "/home"
-router.get('/', homeController.getProductos);
-// router.get('/logout', homeController.getLogout);
+router.get('/', asyncHandler(homeController.getProductos));
 
 module.exports = router;

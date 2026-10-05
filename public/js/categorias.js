@@ -19,7 +19,7 @@ $(document).ready(function() {
         });
       },
       error: function(err) {
-        Swal.fire('Error!', 'No se pudo agregar la categoría.', 'error');
+        Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo agregar la categoría.', 'error');
       }
     });
   });
@@ -52,7 +52,7 @@ $(document).ready(function() {
         });
       },
       error: function(err) {
-        Swal.fire('Error!', 'No se pudo actualizar la categoría.', 'error');
+        Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo actualizar la categoría.', 'error');
       }
     });
   });
@@ -78,7 +78,7 @@ $(document).ready(function() {
             });
           },
           error: function(err) {
-            Swal.fire('Error!', 'No se pudo eliminar la categoría.', 'error');
+            Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo eliminar la categoría.', 'error');
           }
         });
       }

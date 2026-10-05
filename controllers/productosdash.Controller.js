@@ -1,138 +1,109 @@
+const pool = require('../config/db');
+const { toInt, toDecimal, toText } = require('../utils/validators');
+const { eliminarImagen } = require('../utils/uploads');
+
 const controller = {};
 
-// Mostrar todos los productos y categorías
-controller.mostrar = (req, res) => {
-    req.getConnection((err, conn) => {
-        if (err) return res.status(500).send('Error en el servidor: ' + err.message);
-        
-        // Consultar productos
-        conn.query('SELECT * FROM productos', (error, productos) => {
-            if (error) {
-                console.error('Error al mostrar los productos:', error);
-                return res.status(400).json(error);
-            }
-            
-            // Consultar categorías
-            conn.query('SELECT * FROM categorias', (error, categorias) => {
-                if (error) {
-                    console.error('Error al mostrar las categorías:', error);
-                    return res.status(400).json(error);
-                }
-                
-                // Renderizar la vista y pasar productos y categorías
-                res.render("dashboard/productos", { productos: productos, categorias: categorias });
-            });
-        });
-    });
+// Valida los campos del formulario; devuelve { datos } o { error }
+const validarProducto = (body) => {
+    const datos = {
+        nombre: toText(body.nombre, { max: 100 }),
+        descripcion: toText(body.descripcion, { min: 0, max: 2000 }),
+        precio: toDecimal(body.precio, { min: 0, max: 99999999.99 }),
+        cantidad_en_almacen: toInt(body.cantidad_en_almacen, { min: 0, max: 1000000 }),
+        categoria_id: toInt(body.categoria_id, { min: 1 })
+    };
+    if (!datos.nombre) return { error: 'El nombre es obligatorio (máximo 100 caracteres).' };
+    if (datos.descripcion === null) return { error: 'La descripción es demasiado larga.' };
+    if (datos.precio === null) return { error: 'El precio debe ser un número positivo con hasta 2 decimales.' };
+    if (datos.cantidad_en_almacen === null) return { error: 'La cantidad en almacén debe ser un entero mayor o igual a 0.' };
+    if (!datos.categoria_id) return { error: 'Selecciona una categoría válida.' };
+    return { datos };
 };
 
+const categoriaExiste = async (id) => {
+    const [rows] = await pool.query('SELECT id FROM categorias WHERE id = ?', [id]);
+    return rows.length > 0;
+};
 
-// Crear un producto nuevo
-controller.crear = (req, res) => {
-    const { nombre, descripcion, precio, cantidad_en_almacen, categoria_id } = req.body;
+// Mostrar todos los productos y categorías
+controller.mostrar = async (req, res) => {
+    const [productos] = await pool.query('SELECT * FROM productos');
+    const [categorias] = await pool.query('SELECT id, nombre FROM categorias ORDER BY nombre');
+    res.render('dashboard/productos', { productos, categorias });
+};
 
-    // Verifica que se haya subido una imagen
-    if (!req.file) {
-        return res.status(400).send("No se ha subido ninguna imagen.");
+// Crear un producto nuevo (la imagen es opcional)
+controller.crear = async (req, res) => {
+    const imagen = req.file ? req.file.filename : null;
+    const { datos, error } = validarProducto(req.body);
+
+    if (error || !(await categoriaExiste(datos.categoria_id))) {
+        await eliminarImagen(imagen);
+        return res.status(400).json({ success: false, message: error || 'La categoría no existe.' });
     }
 
-    const imagen = req.file.filename; // Solo guarda el nombre del archivo
-
-    const nuevoProducto = { 
-        nombre, 
-        descripcion, 
-        precio, 
-        cantidad_en_almacen, 
-        cantidad_vendida: 0, 
-        categoria_id, 
-        imagen
-    };
-
-    req.getConnection((err, conn) => {
-        if (err) return res.status(500).send('Error en el servidor: ' + err.message);
-        conn.query('INSERT INTO productos SET ?', nuevoProducto, (error, resultados) => {
-            if (error) {
-                console.error('Error al crear un producto:', error);
-                res.status(400).json(error);
-            } else {
-                res.redirect("/almacen/productos");
-            }
-        });
-    });
+    try {
+        const [result] = await pool.query('INSERT INTO productos SET ?', [{ ...datos, cantidad_vendida: 0, imagen }]);
+        res.status(201).json({ success: true, message: 'Producto creado correctamente.', id: result.insertId });
+    } catch (err) {
+        await eliminarImagen(imagen);
+        throw err;
+    }
 };
 
-controller.editar = (req, res) => {
-    const { id } = req.params;
-    const { nombre, descripcion, precio, cantidad_en_almacen, categoria_id } = req.body;
+controller.editar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    const nuevaImagen = req.file ? req.file.filename : null;
+    const { datos, error } = validarProducto(req.body);
 
-    req.getConnection((err, conn) => {
-        if (err) {
-            console.error('Error de conexión:', err);
-            return res.status(500).json({ success: false, message: 'Error en el servidor: ' + err.message });
-        }
+    if (!id || error || !(await categoriaExiste(datos.categoria_id))) {
+        await eliminarImagen(nuevaImagen);
+        return res.status(400).json({ success: false, message: error || 'Datos no válidos.' });
+    }
 
-        // Obtener los datos actuales del producto
-        conn.query('SELECT * FROM productos WHERE id = ?', [id], (error, results) => {
-            if (error) {
-                console.error('Error al obtener el producto:', error);
-                return res.status(400).json({ success: false, message: 'Error al obtener el producto: ' + error.message });
-            }
+    const [actuales] = await pool.query('SELECT imagen FROM productos WHERE id = ?', [id]);
+    if (actuales.length === 0) {
+        await eliminarImagen(nuevaImagen);
+        return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
+    }
 
-            if (results.length === 0) {
-                return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
-            }
+    if (nuevaImagen) datos.imagen = nuevaImagen;
 
-            const productoActual = results[0];
+    try {
+        await pool.query('UPDATE productos SET ? WHERE id = ?', [datos, id]);
+    } catch (err) {
+        await eliminarImagen(nuevaImagen);
+        throw err;
+    }
 
-            // Preparar el objeto de actualización
-            const productoActualizado = {
-                nombre: nombre || productoActual.nombre,
-                descripcion: descripcion || productoActual.descripcion,
-                precio: precio ? parseFloat(precio) : productoActual.precio,
-                cantidad_en_almacen: cantidad_en_almacen ? parseInt(cantidad_en_almacen) : productoActual.cantidad_en_almacen,
-                categoria_id: categoria_id ? parseInt(categoria_id) : productoActual.categoria_id,
-                imagen: req.file ? req.file.filename : productoActual.imagen // Usar la nueva imagen si se subió
-            };
+    // Solo cuando la actualización tuvo éxito se borra la imagen anterior
+    if (nuevaImagen) await eliminarImagen(actuales[0].imagen);
 
-            // Verifica si se ha subido una nueva imagen
-            if (req.file) {
-                productoActualizado.imagen = req.file.filename;
-            }
-
-            // Actualizar el producto en la base de datos
-            conn.query('UPDATE productos SET ? WHERE id = ?', [productoActualizado, id], (error, resultados) => {
-                if (error) {
-                    console.error('Error al actualizar el producto:', error);
-                    return res.status(400).json({ success: false, message: 'Error al actualizar el producto: ' + error.message });
-                }
-                res.json({ success: true, message: 'Producto actualizado correctamente.' });
-            });
-        });
-    });
+    res.json({ success: true, message: 'Producto actualizado correctamente.' });
 };
 
 // Eliminar un producto
-controller.eliminar = (req, res) => {
-    const { id } = req.params;
+controller.eliminar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    if (!id) return res.status(400).json({ success: false, message: 'ID no válido.' });
 
-    req.getConnection((err, conn) => {
-        if (err) return res.status(500).json({ success: false, message: 'Error en el servidor: ' + err.message });
+    const [actuales] = await pool.query('SELECT imagen FROM productos WHERE id = ?', [id]);
+    if (actuales.length === 0) {
+        return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
+    }
 
-        conn.query('DELETE FROM productos WHERE id = ?', [id], (error, resultados) => {
-            if (error) {
-                console.error('Error al eliminar un producto:', error);
-                return res.status(400).json({ success: false, message: 'Error al eliminar el producto.' });
-            }
+    try {
+        await pool.query('DELETE FROM productos WHERE id = ?', [id]);
+    } catch (err) {
+        if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+            return res.status(409).json({ success: false, message: 'No se puede eliminar: el producto tiene compras registradas.' });
+        }
+        throw err;
+    }
 
-            if (resultados.affectedRows === 0) {
-                return res.status(404).json({ success: false, message: 'Producto no encontrado.' });
-            }
-
-            // Si el producto se eliminó correctamente, responde con éxito
-            res.json({ success: true, message: 'Producto eliminado correctamente.' });
-        });
-    });
+    await eliminarImagen(actuales[0].imagen);
+    res.json({ success: true, message: 'Producto eliminado correctamente.' });
 };
-
 
 module.exports = controller;

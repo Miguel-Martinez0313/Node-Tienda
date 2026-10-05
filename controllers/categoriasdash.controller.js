@@ -1,63 +1,76 @@
-const categoriasController = {}
+const pool = require('../config/db');
+const { toInt, toText } = require('../utils/validators');
 
-categoriasController.mostrar = (req, res) => {
-    req.getConnection((err, conn) => {
-        if (err) throw err;
-        conn.query('SELECT * FROM categorias', (error, resultados) => {
-            if (error) {
-                console.error('Error al mostrar las categorias:', error);
-                res.status(500).json({ message: "Error al cargar categorías", error });
-            } else {
-                res.render("dashboard/categorias", { categorias: resultados });
-            }
-        });
-    });
+const categoriasController = {};
+
+// Solo se aceptan estos campos del formulario (nunca req.body completo)
+const validarCategoria = (body) => {
+    const datos = {
+        nombre: toText(body.nombre, { max: 100 }),
+        descripcion: toText(body.descripcion, { min: 0, max: 2000 })
+    };
+    if (!datos.nombre) return { error: 'El nombre es obligatorio (máximo 100 caracteres).' };
+    if (datos.descripcion === null) return { error: 'La descripción es demasiado larga.' };
+    return { datos };
 };
 
-categoriasController.crear = (req, res) => {
-    const nuevaCategoria = req.body;
-    req.getConnection((err, conn) => {
-        if (err) throw err;
-        conn.query('INSERT INTO categorias SET ?', [nuevaCategoria], (error, resultados) => {
-            if (error) {
-                console.error('Error al crear una categoria:', error);
-                res.status(500).json({ message: "Error al crear categoría", error });
-            } else {
-                res.json({ message: "Categoría creada correctamente", id: resultados.insertId });
-            }
-        });
-    });
+const manejarDuplicado = (err, res) => {
+    if (err.code === 'ER_DUP_ENTRY') {
+        res.status(409).json({ success: false, message: 'Ya existe una categoría con ese nombre.' });
+        return true;
+    }
+    return false;
 };
 
-categoriasController.editar = (req, res) => {
-    const { id } = req.params;
-    const actualizadoCategoria = req.body;
-    req.getConnection((err, conn) => {
-        if (err) throw err;
-        conn.query('UPDATE categorias SET ? WHERE id = ?', [actualizadoCategoria, id], (error, resultados) => {
-            if (error) {
-                console.error('Error al editar una categoria:', error);
-                res.status(500).json({ message: "Error al editar categoría", error });
-            } else {
-                res.json({ message: "Categoría actualizada correctamente" });
-            }
-        });
-    });
+categoriasController.mostrar = async (req, res) => {
+    const [categorias] = await pool.query('SELECT * FROM categorias');
+    res.render('dashboard/categorias', { categorias });
 };
 
-categoriasController.eliminar = (req, res) => {
-    const { id } = req.params;
-    req.getConnection((err, conn) => {
-        if (err) throw err;
-        conn.query('DELETE FROM categorias WHERE id = ?', [id], (error, resultados) => {
-            if (error) {
-                console.error('Error al eliminar una categoria:', error);
-                res.status(500).json({ message: "Error al eliminar categoría", error });
-            } else {
-                res.json({ message: "Categoría eliminada correctamente" });
-            }
-        });
-    });
+categoriasController.crear = async (req, res) => {
+    const { datos, error } = validarCategoria(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
+
+    try {
+        const [result] = await pool.query('INSERT INTO categorias SET ?', [datos]);
+        res.status(201).json({ success: true, message: 'Categoría creada correctamente', id: result.insertId });
+    } catch (err) {
+        if (!manejarDuplicado(err, res)) throw err;
+    }
+};
+
+categoriasController.editar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    const { datos, error } = validarCategoria(req.body);
+    if (!id || error) return res.status(400).json({ success: false, message: error || 'ID no válido.' });
+
+    try {
+        const [result] = await pool.query('UPDATE categorias SET ? WHERE id = ?', [datos, id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Categoría no encontrada.' });
+        }
+        res.json({ success: true, message: 'Categoría actualizada correctamente' });
+    } catch (err) {
+        if (!manejarDuplicado(err, res)) throw err;
+    }
+};
+
+categoriasController.eliminar = async (req, res) => {
+    const id = toInt(req.params.id, { min: 1 });
+    if (!id) return res.status(400).json({ success: false, message: 'ID no válido.' });
+
+    try {
+        const [result] = await pool.query('DELETE FROM categorias WHERE id = ?', [id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Categoría no encontrada.' });
+        }
+        res.json({ success: true, message: 'Categoría eliminada correctamente' });
+    } catch (err) {
+        if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+            return res.status(409).json({ success: false, message: 'No se puede eliminar: hay productos en esta categoría.' });
+        }
+        throw err;
+    }
 };
 
 module.exports = categoriasController;

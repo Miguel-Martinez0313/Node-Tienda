@@ -78,6 +78,7 @@ CREATE TABLE compras (
     producto_id INT,
     usuario_id INT,
     cantidad INT,
+    precio_unitario DECIMAL(10, 2),
     fecha_compra DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (producto_id) REFERENCES productos(id),
     FOREIGN KEY (usuario_id) REFERENCES login(id)
@@ -98,8 +99,10 @@ INSERT INTO permisos (permiso_nombre, descripcion) VALUES
     ('Actualizar', 'Permiso para actualizar registros'),
     ('Eliminar', 'Permiso para eliminar registros');
 
+-- Usuario administrador de ejemplo. La contraseña ("1234567890") se guarda ya
+-- cifrada con bcrypt; cámbiala después del primer inicio de sesión.
 INSERT INTO login (nombre, email, contra) VALUES
-    ('Miguel', 'example@gmail.com', '1234567890');
+    ('Miguel', 'example@gmail.com', '$2b$10$tLzK5knW8ftXV7rB3k5OHevze2VDNquQEmSfMeqzQnW38eIGCLbV2');
 
 INSERT INTO usuario_roles (usuario_id, rol_id) VALUES
     (1, 1);
@@ -121,9 +124,3 @@ INSERT INTO productos (nombre, descripcion, precio, cantidad_en_almacen, cantida
     ('Hamburguesa', 'Pan de hamburguesa suave', 15.00, 100, 20, 1, NULL),
     ('Galleta', 'Galleta de chocolate casera', 10.00, 200, 50, 2, NULL),
     ('Galleta Salada', 'Galleta salada para acompañar', 12.00, 150, 25, 2, 2);
-
-
--- Actualizar contraseñas para mayor seguridad
-UPDATE login
-SET contra = '$2b$10$tLzK5knW8ftXV7rB3k5OHevze2VDNquQEmSfMeqzQnW38eIGCLbV2' 
-WHERE email = 'example@gmail.com';

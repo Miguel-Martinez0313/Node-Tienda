@@ -25,7 +25,7 @@ $(document).ready(function() {
                     .then(() => location.reload()); // Recargar para ver el nuevo producto
             },
             error: function(err) {
-                Swal.fire('Error!', 'No se pudo agregar el producto.', 'error');
+                Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo agregar el producto.', 'error');
             }
         });
     });
@@ -57,7 +57,7 @@ $(document).ready(function() {
                         }
                     },
                     error: function(err) {
-                        Swal.fire('Error!', 'No se pudo eliminar el producto.', 'error');
+                        Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo eliminar el producto.', 'error');
                     }
                 });
             }
@@ -86,7 +86,7 @@ $(document).on('submit', 'form[id^="editForm"]', function(e) {
             }
         },
         error: function(err) {
-            Swal.fire('Error!', 'No se pudo actualizar el producto.', 'error');
+            Swal.fire('Error!', (err.responseJSON && err.responseJSON.message) || 'No se pudo actualizar el producto.', 'error');
         }
     });
 });
