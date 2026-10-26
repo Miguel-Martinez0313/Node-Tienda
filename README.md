@@ -13,8 +13,6 @@ Tienda-Node.js
   <img src="https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white">
 </p>
 
-> 👤 Conoce al autor: [Presentación de Antonio Miguel Martínez Martínez](PRESENTACION.md)
-
 ## Configuración
 
 ### Base de Datos
